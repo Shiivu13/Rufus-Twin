@@ -6,6 +6,10 @@ from pydantic import BaseModel
 import google.generativeai as genai
 from tavily import TavilyClient
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent))
+
 # Import supabase client
 from database import get_supabase_client
 
