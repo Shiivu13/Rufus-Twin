@@ -88,7 +88,8 @@ export const ChatComponent: FC<ChatComponentProps> = ({ externalMessage, onExter
     setIsTyping(true);
 
     try {
-      const response = await fetch('http://localhost:8000/ask', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
