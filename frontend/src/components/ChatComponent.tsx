@@ -88,7 +88,13 @@ export const ChatComponent: FC<ChatComponentProps> = ({ externalMessage, onExter
     setIsTyping(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      let apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      // Remove trailing slash if present to avoid double slash in fetch
+      if (apiUrl.endsWith('/')) {
+        apiUrl = apiUrl.slice(0, -1);
+      }
+      
+      console.log("Connecting to API at:", apiUrl);
       const response = await fetch(`${apiUrl}/ask`, {
         method: 'POST',
         headers: {
