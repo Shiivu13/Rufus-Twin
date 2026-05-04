@@ -101,6 +101,15 @@ async def ask_rufus(request: QueryRequest):
         print(f"Error processing query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/products")
+async def get_products():
+    try:
+        response = supabase.table("products").select("id, name, description, price").limit(10).execute()
+        return {"products": response.data}
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     # This allows you to run the file directly via `python backend/main.py`

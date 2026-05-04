@@ -1,33 +1,35 @@
+import { useState, useEffect } from 'react';
 import { ShoppingBag } from 'lucide-react';
 import { ChatComponent } from './components/ChatComponent';
 import { ProductCard } from './components/ProductCard';
 import { ThreeBackground } from './components/ThreeBackground';
 import './hero.css';
 
-const recentProducts = [
-  {
-    id: 1,
-    title: 'Neon Quantum Keyboard',
-    description: 'Mechanical keyboard with ultra-low latency and programmable RGB quantum switches.'
-  },
-  {
-    id: 2,
-    title: 'Holographic Display Pro',
-    description: 'Next-gen desktop monitor with transparent OLED technology and 3D projection.'
-  },
-  {
-    id: 3,
-    title: 'Neural Link Earbuds',
-    description: 'Seamless audio experience with direct nerve conduction and AI noise cancellation.'
-  },
-  {
-    id: 4,
-    title: 'Aura Gaming Mouse',
-    description: 'Ultralight weight mouse with zero gravity skates and 50K DPI sensor.'
-  }
-];
+interface Product {
+  id: string | number;
+  name: string;
+  description: string;
+  price?: string;
+}
 
 function App() {
+  const [recentProducts, setRecentProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/products');
+        if (res.ok) {
+          const data = await res.json();
+          setRecentProducts(data.products || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch products:", error);
+      }
+    };
+    fetchProducts();
+  }, []);
+
   return (
     <>
       <ThreeBackground />
@@ -45,13 +47,17 @@ function App() {
           </div>
           
           <div className="products-list">
-            {recentProducts.map(product => (
-              <ProductCard
-                key={product.id}
-                title={product.title}
-                description={product.description}
-              />
-            ))}
+            {recentProducts.length > 0 ? (
+              recentProducts.map(product => (
+                <ProductCard
+                  key={product.id}
+                  title={product.name}
+                  description={product.description}
+                />
+              ))
+            ) : (
+              <p style={{color: 'var(--text-secondary)', fontSize: '0.9rem'}}>Loading products...</p>
+            )}
           </div>
         </aside>
 

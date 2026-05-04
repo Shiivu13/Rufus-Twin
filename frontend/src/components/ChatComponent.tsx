@@ -29,7 +29,7 @@ export const ChatComponent: FC = () => {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSend = (text: string = inputValue) => {
+  const handleSend = async (text: string = inputValue) => {
     if (!text.trim()) return;
 
     const userMessage: Message = {
@@ -42,16 +42,38 @@ export const ChatComponent: FC = () => {
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Simulate AI response -> Actually call backend
+    try {
+      const response = await fetch('http://localhost:8000/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_query: text }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch from backend');
+      }
+
+      const data = await response.json();
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'This is a simulated response from the Rufus-Twin AI.\n\nI am processing your request and fetching the relevant product data.\n\nHere is a detailed breakdown of the components you requested.',
+        text: data.response || "Sorry, I couldn't process that.",
         sender: 'ai'
       };
       setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error(error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Error connecting to the backend. Please ensure the FastAPI server is running.",
+        sender: 'ai'
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 2000);
+    }
   };
 
   const onSubmit = (e?: FormEvent) => {
