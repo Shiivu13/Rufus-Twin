@@ -7,7 +7,7 @@ import google.generativeai as genai
 from tavily import TavilyClient
 
 # Import supabase client
-from backend.database import get_supabase_client
+from database import get_supabase_client
 
 app = FastAPI(title="Rufus-Twin API")
 
