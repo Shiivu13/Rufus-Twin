@@ -28,8 +28,9 @@ def load_data(filepath):
 def generate_embedding(text):
     """Generates a 768-dimensional embedding using Gemini API."""
     result = genai.embed_content(
-        model="models/text-embedding-004",
-        content=text
+        model="models/gemini-embedding-001",
+        content=text,
+        output_dimensionality=768
     )
     return result['embedding']
 
@@ -73,10 +74,10 @@ def upload_products():
             
             # Upload to Supabase
             response = supabase.table("products").insert(record).execute()
-            print(f"✅ Successfully uploaded: {name}")
+            print(f"[SUCCESS] Successfully uploaded: {name}")
             
         except Exception as e:
-            print(f"❌ Failed to process or upload '{name}'.")
+            print(f"[ERROR] Failed to process or upload '{name}'.")
             print(f"   Error Details: {e}")
 
 if __name__ == "__main__":

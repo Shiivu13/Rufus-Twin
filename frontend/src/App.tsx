@@ -1,34 +1,11 @@
-import { useState, useEffect } from 'react';
-import { ShoppingBag } from 'lucide-react';
+import { useState } from 'react';
+import { Bot } from 'lucide-react';
 import { ChatComponent } from './components/ChatComponent';
-import { ProductCard } from './components/ProductCard';
 import { ThreeBackground } from './components/ThreeBackground';
 import './hero.css';
 
-interface Product {
-  id: string | number;
-  name: string;
-  description: string;
-  price?: string;
-}
-
 function App() {
-  const [recentProducts, setRecentProducts] = useState<Product[]>([]);
-
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/products');
-        if (res.ok) {
-          const data = await res.json();
-          setRecentProducts(data.products || []);
-        }
-      } catch (error) {
-        console.error("Failed to fetch products:", error);
-      }
-    };
-    fetchProducts();
-  }, []);
+  const [externalMessage, setExternalMessage] = useState<string>('');
 
   return (
     <>
@@ -41,27 +18,18 @@ function App() {
 
       <div className="app-container">
         <aside className="glass-panel sidebar">
-          <div className="sidebar-title">
-            <ShoppingBag size={24} color="var(--accent-neon)" />
-            Dashboard
+          <div className="sidebar-logo">
+            <Bot size={32} color="var(--accent-neon)" />
+            <span className="logo-text">Rufus</span>
           </div>
           
-          <div className="products-list">
-            {recentProducts.length > 0 ? (
-              recentProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  title={product.name}
-                  description={product.description}
-                />
-              ))
-            ) : (
-              <p style={{color: 'var(--text-secondary)', fontSize: '0.9rem'}}>Loading products...</p>
-            )}
+          <div className="sidebar-status">
+            <div className="status-dot"></div>
+            <span>System Active</span>
           </div>
         </aside>
 
-        <ChatComponent />
+        <ChatComponent externalMessage={externalMessage} onExternalMessageSent={() => setExternalMessage('')} />
       </div>
     </>
   );

@@ -4,9 +4,11 @@ import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 interface ProductCardProps {
   title: string;
   description: string;
+  image_url?: string;
+  onClick?: () => void;
 }
 
-export const ProductCard: FC<ProductCardProps> = ({ title, description }) => {
+export const ProductCard: FC<ProductCardProps> = ({ title, description, image_url, onClick }) => {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
 
@@ -40,10 +42,12 @@ export const ProductCard: FC<ProductCardProps> = ({ title, description }) => {
       className="product-card"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onClick={onClick}
       style={{
         rotateX,
         rotateY,
-        transformStyle: "preserve-3d"
+        transformStyle: "preserve-3d",
+        cursor: onClick ? 'pointer' : 'default'
       }}
       whileHover={{ 
         scale: 1.08,
@@ -54,8 +58,15 @@ export const ProductCard: FC<ProductCardProps> = ({ title, description }) => {
       transition={{ scale: { type: "spring", stiffness: 400, damping: 15 } }}
     >
       <div className="product-card-content" style={{ transform: "translateZ(40px)" }}>
-        <div className="product-image-placeholder">
-          <span style={{color: 'var(--accent-neon)', fontSize: '0.8rem', textShadow: '0 0 5px rgba(6,182,212,0.5)'}}>Product Image</span>
+        <div className="product-image-placeholder" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img 
+            src={image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=0D1117&color=06B6D4&size=150`} 
+            alt={title} 
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=0D1117&color=06B6D4&size=150`;
+            }}
+          />
         </div>
         <h3 className="product-title">{title}</h3>
         <p className="product-desc">{description}</p>

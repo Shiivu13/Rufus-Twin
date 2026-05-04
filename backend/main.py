@@ -1,8 +1,10 @@
 import os
+import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
+from tavily import TavilyClient
 
 # Import supabase client
 from backend.database import get_supabase_client
@@ -18,93 +20,128 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Supabase and Gemini
-# Note: backend.database already calls load_dotenv(), so env vars are loaded
+# Initialize Supabase and APIs
 supabase = get_supabase_client()
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 if not gemini_api_key:
     raise RuntimeError("GEMINI_API_KEY not found in environment variables.")
 
+tavily_api_key = os.environ.get("TAVILY_API_KEY")
+tavily_client = TavilyClient(api_key=tavily_api_key) if tavily_api_key else None
+
 genai.configure(api_key=gemini_api_key)
+
+# Initialize Gemini models
+system_instruction = (
+    "You are Rufus, a witty and helpful AI shopping assistant. "
+    "If a user says hello, be friendly and ask what they are looking to buy today. "
+    "If they ask about a product, use the provided search results to give expert advice. "
+    "Keep your tone helpful but slightly professional."
+)
+
+classifier_model = genai.GenerativeModel("gemini-flash-latest")
+rufus_model = genai.GenerativeModel(
+    model_name="gemini-flash-latest",
+    system_instruction=system_instruction
+)
 
 class QueryRequest(BaseModel):
     user_query: str
+    session_id: str = None
 
 @app.post("/ask")
 async def ask_rufus(request: QueryRequest):
     user_query = request.user_query
+    session_id = request.session_id or str(uuid.uuid4())
     
     if not user_query:
         raise HTTPException(status_code=400, detail="user_query is required")
         
     try:
-        # 1. Generate embedding for the user query using Gemini
-        embed_result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=user_query,
-            task_type="retrieval_query"
-        )
-        query_embedding = embed_result['embedding']
-        
-        # 2. Call Supabase RPC function 'match_products' to find relevant product
-        rpc_response = supabase.rpc(
-            'match_products',
-            {
-                'query_embedding': query_embedding,
-                'match_threshold': 0.3, # Similarity threshold
-                'match_count': 1        # Number of top products to fetch
-            }
-        ).execute()
-        
-        products = rpc_response.data
-        
-        if not products:
-            return {"response": "I couldn't find any relevant products matching your query in the database."}
+        # Fast-path for extremely simple greetings to ensure "near-instant" response
+        fast_greetings = {"hi", "hello", "hey", "hola", "yo", "hi there", "hello there"}
+        if user_query.lower().strip().strip("?!.") in fast_greetings:
+            intent = "GREETING"
+        else:
+            # 1. The Classifier Step: Determine if we need to search the web
+            classification_prompt = (
+                f"Classify the following user query into 'RESEARCH' or 'GREETING'.\n"
+                f"RESEARCH: If the query is about a specific product, a brand, a comparison, prices, or shopping advice.\n"
+                f"GREETING: If the query is a simple greeting (hi, hello), a personal question (who are you), or general talk/jokes.\n\n"
+                f"Query: {user_query}\n\n"
+                f"Classification (Respond with ONLY 'RESEARCH' or 'GREETING'):"
+            )
+            classification_response = classifier_model.generate_content(classification_prompt)
+            intent = classification_response.text.strip().upper()
+
+        results = []
+        images = []
+        ai_response_text = ""
+
+        # 2. Routing Logic
+        if "GREETING" in intent:
+            # Skip search step for simple greetings/general talk
+            response = rufus_model.generate_content(user_query)
+            ai_response_text = response.text
+        else:
+            # 3. The Research Step: Trigger Tavily Search for product/shopping queries
+            if not tavily_client:
+                raise HTTPException(status_code=500, detail="TAVILY_API_KEY is missing.")
             
-        # 3. Fetch the most relevant product's details
-        top_product = products[0]
-        name = top_product.get("name", "Unknown Product")
-        description = top_product.get("description", "No description available.")
-        specs = top_product.get("specs", [])
-        reviews = top_product.get("reviews", [])
+            # Enhance query for research accuracy (2026/2027 context)
+            future_keywords = ["rumor", "leak", "future", "upcoming", "next", "2026", "2027", "latest", "new"]
+            enhanced_query = f"{user_query} latest 2026" if any(kw in user_query.lower() for kw in future_keywords) else user_query
+            
+            # Perform web search
+            search_result = tavily_client.search(enhanced_query, search_depth='advanced', include_images=True)
+            results = search_result.get("results", [])[:5]
+            images = search_result.get("images", [])
+            
+            contexts = [f"Title: {res.get('title')}\nSnippet: {res.get('content')}" for res in results]
+            context_str = "\n\n".join(contexts)
+            
+            prompt = f"Context (Real-time search results):\n{context_str}\n\nUser Question: {user_query}"
+            response = rufus_model.generate_content(prompt)
+            ai_response_text = response.text
+
+        # 4. Save to chat history removed as requested
         
-        # Parse lists if they are arrays
-        specs_str = ", ".join(specs) if isinstance(specs, list) else str(specs)
-        reviews_str = " ".join(reviews) if isinstance(reviews, list) else str(reviews)
-        
-        # Combine the context
-        context = f"Product Name: {name}\nDescription: {description}\nSpecifications: {specs_str}\nReviews: {reviews_str}"
-        
-        # 4. Create System Prompt for Gemini 1.5 Flash
-        system_instruction = (
-            "You are Rufus, a helpful AI shopping assistant. "
-            "Use these reviews and specs to answer the user's question accurately. "
-            "If the reviews say something negative, be honest."
-        )
-        
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_instruction
-        )
-        
-        # 5. Send context + user question to Gemini 1.5 Flash
-        prompt = f"Context:\n{context}\n\nUser Question: {user_query}"
-        response = model.generate_content(prompt)
-        
-        # 6. Return the AI's response as JSON
         return {
-            "response": response.text,
-            "product_matched": name
+            "session_id": session_id,
+            "response": ai_response_text,
+            "search_results": results,
+            "images": images,
+            "intent": intent
         }
         
     except Exception as e:
         print(f"Error processing query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/history/{session_id}")
+async def get_history(session_id: str):
+    try:
+        # Fetch previous messages for the session
+        response = supabase.table("chat_history").select("*").eq("session_id", session_id).order("created_at").execute()
+        return {"session_id": session_id, "history": response.data}
+    except Exception as e:
+        # Fallback if ordered by created_at fails (if column doesn't exist)
+        try:
+            response = supabase.table("chat_history").select("*").eq("session_id", session_id).order("id").execute()
+            return {"session_id": session_id, "history": response.data}
+        except Exception as e2:
+            print(f"Error fetching history: {e2}")
+            # Final fallback
+            try:
+                response = supabase.table("chat_history").select("*").eq("session_id", session_id).execute()
+                return {"session_id": session_id, "history": response.data}
+            except Exception as e3:
+                raise HTTPException(status_code=500, detail=str(e3))
+
 @app.get("/products")
 async def get_products():
     try:
-        response = supabase.table("products").select("id, name, description, price").limit(10).execute()
+        response = supabase.table("products").select("*").limit(10).execute()
         return {"products": response.data}
     except Exception as e:
         print(f"Error fetching products: {e}")
@@ -112,5 +149,4 @@ async def get_products():
 
 if __name__ == "__main__":
     import uvicorn
-    # This allows you to run the file directly via `python backend/main.py`
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
